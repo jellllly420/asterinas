@@ -22,4 +22,11 @@ pub const DEFAULT_LOG_LEVEL: Level = Level::Error;
 /// This value represent the base timer frequency in Hz
 pub const TIMER_FREQ: u64 = 500;
 
-pub const REAL_TIME_TASK_PRI: u16 = 100;
+pub const MIN_NICE: i8 = -20;
+pub const MAX_NICE: i8 = 19;
+pub const NICE_COUNT: i8 = MAX_NICE - MIN_NICE + 1;
+
+pub const NICE_RANGE: core::ops::Range<i8> = MIN_NICE..(MAX_NICE + 1);
+pub const RT_PRIO_RANGE: core::ops::Range<u16> = 0..100;
+pub const PRIO_RANGE: core::ops::Range<u16> = 0..(RT_PRIO_RANGE.end + (NICE_COUNT as u16));
+pub const DEFAULT_PRIO: u16 = RT_PRIO_RANGE.end + ((NICE_COUNT / 2) as u16);

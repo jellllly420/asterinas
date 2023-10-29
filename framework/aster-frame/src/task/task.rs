@@ -177,6 +177,10 @@ impl Task {
     pub fn is_real_time(&self) -> bool {
         self.priority.is_real_time()
     }
+
+    pub fn priority(&self) -> Priority {
+        self.priority
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

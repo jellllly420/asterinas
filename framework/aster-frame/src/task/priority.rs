@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::config::REAL_TIME_TASK_PRI;
+use crate::config::{DEFAULT_PRIO, NICE_RANGE, PRIO_RANGE, RT_PRIO_RANGE};
 
 /// The priority of a task.
 /// Similar to Linux, a larger value represents a lower priority,
@@ -10,32 +10,33 @@ use crate::config::REAL_TIME_TASK_PRI;
 pub struct Priority(u16);
 
 impl Priority {
-    pub const fn new(val: u16) -> Self {
-        assert!(val <= 139);
+    pub fn new(val: u16) -> Self {
+        assert!(PRIO_RANGE.contains(&val));
         Self(val)
     }
 
     pub const fn lowest() -> Self {
-        Self::new(139)
+        Self(PRIO_RANGE.end - 1)
     }
 
     pub const fn low() -> Self {
-        Self::new(110)
+        Self(DEFAULT_PRIO)
     }
 
     pub const fn normal() -> Self {
-        Self::new(100)
+        Self(RT_PRIO_RANGE.end)
     }
 
-    pub const fn high() -> Self {
+    pub fn high() -> Self {
         Self::new(10)
     }
 
     pub const fn highest() -> Self {
-        Self::new(0)
+        Self(RT_PRIO_RANGE.start)
     }
 
-    pub const fn set(&mut self, val: u16) {
+    pub fn set(&mut self, val: u16) {
+        assert!(PRIO_RANGE.contains(&val));
         self.0 = val;
     }
 
@@ -43,7 +44,30 @@ impl Priority {
         self.0
     }
 
-    pub const fn is_real_time(&self) -> bool {
-        self.0 < REAL_TIME_TASK_PRI
+    pub fn is_real_time(self) -> bool {
+        RT_PRIO_RANGE.contains(&self.0)
+    }
+
+    pub fn as_nice(self) -> Option<i8> {
+        if self.is_real_time() {
+            None
+        } else {
+            Some(self.0.wrapping_sub(DEFAULT_PRIO) as i8)
+        }
+    }
+
+    pub fn from_nice(nice: i8) -> Self {
+        match Self::try_from_nice(nice) {
+            Some(prio) => prio,
+            None => panic!("invalid nice value: {nice}"),
+        }
+    }
+
+    pub fn try_from_nice(nice: i8) -> Option<Self> {
+        if NICE_RANGE.contains(&nice) {
+            Some(Self::new(DEFAULT_PRIO.wrapping_add(nice as u16)))
+        } else {
+            None
+        }
     }
 }
