@@ -159,21 +159,24 @@ impl Scheduler for CompletelyFairScheduler {
     }
 
     fn dequeue(&self) -> Option<Arc<Task>> {
-        if !self.real_time_tasks.lock_irq_disabled().is_empty() {
-            self.real_time_tasks.lock_irq_disabled().pop_front()
-        } else {
+        let mut real_time_tasks = self.real_time_tasks.lock_irq_disabled();
+        if !real_time_tasks.is_empty() {
+            return real_time_tasks.pop_front();
+        }
+        drop(real_time_tasks);
+
             let vruntime = {
                 let mut heap = self.normal_tasks.lock_irq_disabled();
                 let ret = heap.pop()?;
-                self.min_vruntime.store(heap.peek().unwrap().get(), SeqCst);
+            if let Some(peek) = heap.peek() {
+                self.min_vruntime.store(peek.get(), SeqCst);
+            }
                 ret
             };
             let task = vruntime.task.clone();
-            self.vruntimes
-                .lock_irq_disabled()
-                .insert(key_of(&task), vruntime);
+        let key = key_of(&task);
+        self.vruntimes.lock_irq_disabled().insert(key, vruntime);
             Some(task)
-        }
     }
 
     fn should_preempt(&self, task: &Arc<Task>) -> bool {
@@ -182,7 +185,8 @@ impl Scheduler for CompletelyFairScheduler {
         }
 
         let mut vruntimes = self.vruntimes.lock_irq_disabled();
-        let cur = match vruntimes.get_mut(&key_of(task)) {
+        let key = key_of(task);
+        let cur = match vruntimes.get_mut(&key) {
             Some(vruntime) => vruntime,
             None => return true,
         };
