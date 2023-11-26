@@ -1,17 +1,17 @@
 use core::{
-    sync::atomic::{ AtomicIsize, Ordering as AtomicOrdering },
     cmp::Ordering,
+    sync::atomic::{AtomicIsize, Ordering::*},
 };
 
 use crate::prelude::*;
 use alloc::{
-    collections::{ BinaryHeap, BTreeMap },
-    sync::Arc
+    collections::{BTreeMap, BinaryHeap},
+    sync::Arc,
 };
 use intrusive_collections::LinkedList;
 use jinux_frame::{
     config::NICE_RANGE,
-    task::{ Scheduler, Task, TaskAdapter, set_scheduler},
+    task::{set_scheduler, Scheduler, Task, TaskAdapter},
 };
 
 pub fn init() {
@@ -43,7 +43,7 @@ impl VRuntime {
     pub fn new(scheduler: &CompletelyFairScheduler, task: Arc<Task>) -> VRuntime {
         VRuntime {
             // BUG: Keeping creating new tasks can cause starvation.
-            vruntime: scheduler.min_vruntime.load(AtomicOrdering::Relaxed),
+            vruntime: scheduler.min_vruntime.load(SeqCst),
             delta: 0,
             nice: task.priority().as_nice().unwrap(),
             task,
@@ -72,9 +72,8 @@ impl VRuntime {
 
     pub fn tick(&mut self) {
         self.delta += 1;
+        self.set(self.get());
     }
-
-    
 }
 
 impl Ord for VRuntime {
@@ -99,32 +98,43 @@ impl PartialEq for VRuntime {
 }
 
 /// The Completely Fair Scheduler(CFS)
-/// 
+///
 /// Real-time tasks are placed in the `real_time_tasks` queue and
 /// are always prioritized during scheduling.
 /// Normal tasks are placed in the `normal_tasks` queue and are only
 /// scheduled for execution when there are no real-time tasks.
 pub struct CompletelyFairScheduler {
+    /// Tasks with a priority of less than 100 are regarded as real-time tasks.
+    real_time_tasks: SpinLock<LinkedList<TaskAdapter>>,
+
     min_vruntime: AtomicIsize,
     // TODO: `vruntimes` currently never shrinks.
     /// `VRuntime`'s created are stored here for looking up.
-    vruntimes: SpinLock<BTreeMap<usize, Arc<VRuntime>>>,
-    /// Tasks with a priority of less than 100 are regarded as real-time tasks.
-    real_time_tasks: SpinLock<LinkedList<TaskAdapter>>,
+    vruntimes: SpinLock<BTreeMap<usize, VRuntime>>,
     /// Tasks with a priority greater than or equal to 100 are regarded as normal tasks.
-    normal_tasks: SpinLock<BinaryHeap<Arc<VRuntime>>>,
-
+    normal_tasks: SpinLock<BinaryHeap<VRuntime>>,
 }
 
 impl CompletelyFairScheduler {
     pub fn new() -> Self {
         Self {
+            real_time_tasks: SpinLock::new(LinkedList::new(Default::default())),
+
             min_vruntime: AtomicIsize::new(0),
-            vruntimes: SpinLock::new(BTreeMap::<usize, Arc<VRuntime>>::new()),
-            real_time_tasks: SpinLock::new(LinkedList::new(TaskAdapter::new())),
-            normal_tasks: SpinLock::new(BinaryHeap::<Arc<VRuntime>>::new()),
+            vruntimes: SpinLock::new(BTreeMap::new()),
+            normal_tasks: SpinLock::new(BinaryHeap::new()),
         }
     }
+}
+
+impl Default for CompletelyFairScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn key_of(task: &Arc<Task>) -> usize {
+    Arc::as_ptr(task) as usize
 }
 
 impl Scheduler for CompletelyFairScheduler {
@@ -135,12 +145,16 @@ impl Scheduler for CompletelyFairScheduler {
                 .push_back(task.clone());
         } else {
             // BUG: address is not a strictly unique key
-            let address = Arc::as_ptr(&task) as usize;
-            self.vruntimes.lock_irq_disabled().entry(address).or_insert_with(|| Arc::new(VRuntime::new(self, task)));
-            let vruntime = self.vruntimes.lock_irq_disabled().get(&address).unwrap().clone();
-            self.normal_tasks
+            let key = key_of(&task);
+
+            let vruntime = self
+                .vruntimes
                 .lock_irq_disabled()
-                .push(vruntime);
+                .remove(&key)
+                .unwrap_or_else(|| VRuntime::new(self, task));
+            let mut heap = self.normal_tasks.lock_irq_disabled();
+            heap.push(vruntime);
+            self.min_vruntime.store(heap.peek().unwrap().get(), SeqCst);
         }
     }
 
@@ -148,20 +162,31 @@ impl Scheduler for CompletelyFairScheduler {
         if !self.real_time_tasks.lock_irq_disabled().is_empty() {
             self.real_time_tasks.lock_irq_disabled().pop_front()
         } else {
-            self.normal_tasks.lock_irq_disabled().pop().as_ref().map(|vruntime| vruntime.task.clone())
+            let vruntime = {
+                let mut heap = self.normal_tasks.lock_irq_disabled();
+                let ret = heap.pop()?;
+                self.min_vruntime.store(heap.peek().unwrap().get(), SeqCst);
+                ret
+            };
+            let task = vruntime.task.clone();
+            self.vruntimes
+                .lock_irq_disabled()
+                .insert(key_of(&task), vruntime);
+            Some(task)
         }
     }
 
     fn should_preempt(&self, task: &Arc<Task>) -> bool {
-        // TODO: tick?
         if task.is_real_time() {
-            false
-        } else if !self.real_time_tasks.lock_irq_disabled().is_empty() {
-            true
-        } else if self.normal_tasks.lock_irq_disabled().is_empty() {
-            false
-        } else {
-            self.normal_tasks.lock_irq_disabled().peek().unwrap() > self.vruntimes.lock_irq_disabled().get(&(Arc::as_ptr(task) as usize)).unwrap()
+            return false;
         }
+
+        let mut vruntimes = self.vruntimes.lock_irq_disabled();
+        let cur = match vruntimes.get_mut(&key_of(task)) {
+            Some(vruntime) => vruntime,
+            None => return true,
+        };
+        cur.tick();
+        cur.get() > self.min_vruntime.load(SeqCst)
     }
 }
