@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 use core::{
     cmp::Ordering,
     sync::atomic::{AtomicIsize, Ordering::*},
@@ -165,18 +167,18 @@ impl Scheduler for CompletelyFairScheduler {
         }
         drop(real_time_tasks);
 
-            let vruntime = {
-                let mut heap = self.normal_tasks.lock_irq_disabled();
-                let ret = heap.pop()?;
+        let vruntime = {
+            let mut heap = self.normal_tasks.lock_irq_disabled();
+            let ret = heap.pop()?;
             if let Some(peek) = heap.peek() {
                 self.min_vruntime.store(peek.get(), SeqCst);
             }
-                ret
-            };
-            let task = vruntime.task.clone();
+            ret
+        };
+        let task = vruntime.task.clone();
         let key = key_of(&task);
         self.vruntimes.lock_irq_disabled().insert(key, vruntime);
-            Some(task)
+        Some(task)
     }
 
     fn should_preempt(&self, task: &Arc<Task>) -> bool {
