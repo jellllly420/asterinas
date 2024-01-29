@@ -10,11 +10,11 @@ use alloc::{
     collections::{BTreeMap, BinaryHeap},
     sync::Arc,
 };
-use intrusive_collections::LinkedList;
-use jinux_frame::{
+use aster_frame::{
     config::NICE_RANGE,
     task::{set_scheduler, Scheduler, Task, TaskAdapter},
 };
+use intrusive_collections::LinkedList;
 
 pub fn init() {
     let completely_fair_scheduler = Box::new(CompletelyFairScheduler::new());
