@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use aster_frame::{
-    task::{preempt, Task, TaskOptions},
+    task::{preempt, schedule, Task, TaskOptions},
     user::{ReturnReason, UserContextApi, UserMode, UserSpace},
 };
 
@@ -11,7 +11,7 @@ use crate::{
     prelude::*,
     process::{posix_thread::PosixThreadExt, signal::handle_pending_signal},
     syscall::handle_syscall,
-    thread::exception::handle_exception,
+    thread::{exception::handle_exception, work_queue::has_pending_work_items},
 };
 
 /// create new task with userspace and parent process
@@ -37,7 +37,7 @@ pub fn create_new_user_task(user_space: Arc<UserSpace>, thread_ref: Weak<Thread>
         );
 
         let posix_thread = current_thread.as_posix_thread().unwrap();
-        let has_kernel_event_fn = || posix_thread.has_pending();
+        let has_kernel_event_fn = || posix_thread.has_pending() || has_pending_work_items();
         loop {
             let return_reason = user_mode.execute(has_kernel_event_fn);
             let context = user_mode.context_mut();
@@ -45,7 +45,11 @@ pub fn create_new_user_task(user_space: Arc<UserSpace>, thread_ref: Weak<Thread>
             match return_reason {
                 ReturnReason::UserException => handle_exception(context),
                 ReturnReason::UserSyscall => handle_syscall(context),
-                ReturnReason::KernelEvent => {}
+                ReturnReason::KernelEvent => {
+                    if !posix_thread.has_pending() {
+                        schedule();
+                    }
+                }
             };
 
             if current_thread.status().is_exited() {

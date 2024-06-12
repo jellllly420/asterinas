@@ -90,6 +90,31 @@ where
     submit_work_item(work_item, work_priority);
 }
 
+pub fn has_pending_work_items() -> bool {
+    WORKERPOOL_HIGH_PRI
+        .get()
+        .unwrap()
+        .cpu_set()
+        .iter()
+        .any(|cpuid| {
+            WORKERPOOL_HIGH_PRI
+                .get()
+                .unwrap()
+                .has_pending_work_items(cpuid as u32)
+        })
+        || WORKERPOOL_NORMAL
+            .get()
+            .unwrap()
+            .cpu_set()
+            .iter()
+            .any(|cpuid| {
+                WORKERPOOL_NORMAL
+                    .get()
+                    .unwrap()
+                    .has_pending_work_items(cpuid as u32)
+            })
+}
+
 /// Submit a work item to a global work queue.
 pub fn submit_work_item(work_item: Arc<WorkItem>, work_priority: WorkPriority) -> bool {
     match work_priority {
