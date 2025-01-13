@@ -97,10 +97,10 @@ trait SchedClassRq: Send + fmt::Debug {
     fn enqueue(&mut self, task: Arc<Task>, flags: Option<EnqueueFlags>);
 
     /// Returns the number of threads in the run queue.
-    fn len(&mut self) -> usize;
+    fn len(&self) -> usize;
 
     /// Checks if the run queue is empty.
-    fn is_empty(&mut self) -> bool {
+    fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
@@ -224,13 +224,17 @@ impl ClassScheduler {
     // TODO: Implement a better algorithm and replace the current naive implementation.
     fn select_cpu(&self, affinity: &AtomicCpuSet) -> CpuId {
         let guard = disable_local();
-        let affinity = affinity.load();
-        let cur = guard.current_cpu();
-        if affinity.contains(cur) {
-            cur
-        } else {
-            affinity.iter().next().expect("empty affinity")
+        let mut selected = guard.current_cpu();
+        let mut minimum_load = u32::MAX;
+        for candidate in affinity.load().iter() {
+            let rq = self.rqs[candidate.as_usize()].lock();
+            let (load, _) = rq.nr_queued_and_running();
+            if load < minimum_load {
+                minimum_load = load;
+                selected = candidate;
+            }
         }
+        selected
     }
 }
 
@@ -255,7 +259,7 @@ impl PerCpuClassRqSet {
         }
     }
 
-    fn nr_queued_and_running(&mut self) -> (u32, u32) {
+    fn nr_queued_and_running(&self) -> (u32, u32) {
         let queued = self.stop.len() + self.real_time.len() + self.fair.len() + self.idle.len();
         let running = usize::from(self.current.is_some());
         (queued as u32, running as u32)
