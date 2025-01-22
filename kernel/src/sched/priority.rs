@@ -75,7 +75,7 @@ impl Priority {
     }
 
     pub const fn default_real_time() -> Self {
-        Self::new(PriorityRange::new(50))
+        Self::new(PriorityRange::new(100))
     }
 
     pub const fn idle() -> Self {

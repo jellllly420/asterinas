@@ -10,7 +10,8 @@ mod stats;
 pub use stats::{loadavg, nr_queued_and_running};
 
 // TODO: Use `sched_class::init` instead after the completion of #1676.
-pub use self::priority_scheduler::init;
+// pub use self::priority_scheduler::init;
+pub use self::sched_class::init;
 // There may be multiple scheduling policies in the system,
 // and subsequent schedulers can be placed under this module.
 pub use self::sched_class::SchedAttr;
