@@ -237,12 +237,8 @@ impl Monitor {
                 current_monitor.run_monitor_loop();
             });
             let cpu_affinity = CpuSet::new_full();
-            // FIXME: remove the use of real-time priority.
-            // Logically all monitors should be of default normal priority.
-            // This workaround is to make the monitor of high-priority worker pool
-            // starvation-free under the current scheduling policy.
             let priority = match priority {
-                WorkPriority::High => Priority::default_real_time(),
+                WorkPriority::High => Priority::MIN_NORMAL,
                 WorkPriority::Normal => Priority::default(),
             };
             let bound_task = ThreadOptions::new(task_fn)

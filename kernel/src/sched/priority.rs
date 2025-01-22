@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use core::sync::atomic::{AtomicI8, AtomicI16};
+use core::sync::atomic::{AtomicI16, AtomicI8};
 
 use atomic_integer_wrapper::define_atomic_version_of_integer_like_type;
 
@@ -55,10 +55,12 @@ impl TryFrom<i8> for Nice {
 
 /// The thread scheduling priority value.
 ///
-/// It is an integer in the range of [0, 139]. Here we follow the Linux
+/// It is an integer in the range of [-1, 140]. Here we follow the Linux
 /// priority mappings: the relation between [`Priority`] and [`Nice`] is
-/// as such - prio = nice + 120 while the priority of [0, 100] are
-/// reserved for real-time tasks.
+/// as such - prio = nice + 120 while the priority of [0, 99] are
+/// reserved for real-time tasks. We assign stop thread a priority of -1 and
+/// idle thread a priority of 140 to keep a total order relation among
+/// threads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Priority(PriorityRange);
 
@@ -73,17 +75,10 @@ impl Priority {
     pub const STOP: Self = Self::new(PriorityRange::new(PriorityRange::MIN));
     pub const IDLE: Self = Self::new(PriorityRange::new(PriorityRange::MAX));
     pub const MAX_RT: Self = Self::new(PriorityRange::new(99));
+    pub const MIN_NORMAL: Self = Self::new(PriorityRange::new(100));
 
     pub const fn new(range: PriorityRange) -> Self {
         Self(range)
-    }
-
-    pub const fn default_real_time() -> Self {
-        Self::new(PriorityRange::new(50))
-    }
-
-    pub const fn idle() -> Self {
-        Self::new(PriorityRange::new(PriorityRange::MAX))
     }
 
     pub const fn range(&self) -> &PriorityRange {

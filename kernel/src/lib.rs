@@ -86,7 +86,7 @@ pub fn main() {
     let mut affinity = CpuSet::new_empty();
     affinity.add(CpuId::bsp());
     ThreadOptions::new(init_thread)
-        .priority(Priority::idle())
+        .priority(Priority::IDLE)
         .cpu_affinity(affinity)
         .spawn();
 }
@@ -121,7 +121,7 @@ fn ap_init() {
 
     ThreadOptions::new(ap_idle_thread)
         .cpu_affinity(cpu_id.into())
-        .priority(Priority::idle())
+        .priority(Priority::IDLE)
         .spawn();
 }
 

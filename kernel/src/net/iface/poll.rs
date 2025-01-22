@@ -62,8 +62,7 @@ fn spawn_background_poll_thread(iface: Arc<Iface>) {
         }
     };
 
-    // FIXME: remove the use of real-time priority.
     ThreadOptions::new(task_fn)
-        .priority(Priority::default_real_time())
+        .priority(Priority::MIN_NORMAL)
         .spawn();
 }

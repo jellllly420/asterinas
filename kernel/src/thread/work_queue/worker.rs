@@ -52,7 +52,7 @@ impl Worker {
             cpu_affinity.add(bound_cpu);
             let mut priority = Priority::default();
             if worker_pool.upgrade().unwrap().is_high_priority() {
-                priority = Priority::default_real_time();
+                priority = Priority::MIN_NORMAL;
             }
             let bound_task = ThreadOptions::new(task_fn)
                 .cpu_affinity(cpu_affinity)

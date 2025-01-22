@@ -299,8 +299,8 @@ impl Default for TimeSlice {
 }
 
 impl PreemptSchedInfo for Thread {
-    const REAL_TIME_TASK_PRIORITY: Priority = Priority::default_real_time();
-    const LOWEST_TASK_PRIORITY: Priority = Priority::idle();
+    const REAL_TIME_TASK_PRIORITY: Priority = Priority::MAX_RT;
+    const LOWEST_TASK_PRIORITY: Priority = Priority::IDLE;
 
     fn priority(&self) -> Priority {
         self.atomic_priority().load(Ordering::Relaxed)
@@ -320,7 +320,7 @@ trait PreemptSchedInfo {
     fn cpu_affinity(&self) -> CpuSet;
 
     fn is_real_time(&self) -> bool {
-        self.priority() < Self::REAL_TIME_TASK_PRIORITY
+        self.priority() <= Self::REAL_TIME_TASK_PRIORITY
     }
 
     fn is_lowest(&self) -> bool {
