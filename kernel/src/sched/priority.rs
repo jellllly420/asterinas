@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use core::sync::atomic::{AtomicI8, AtomicU8};
+use core::sync::atomic::{AtomicI8, AtomicI16};
 
 use atomic_integer_wrapper::define_atomic_version_of_integer_like_type;
 
@@ -62,14 +62,18 @@ impl TryFrom<i8> for Nice {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Priority(PriorityRange);
 
-pub type PriorityRange = RangedU8<0, 139>;
+pub type PriorityRange = RangedI16<-1, 140>;
 
 define_atomic_version_of_integer_like_type!(Priority, try_from = true, {
     #[derive(Debug)]
-    pub struct AtomicPriority(AtomicU8);
+    pub struct AtomicPriority(AtomicI16);
 });
 
 impl Priority {
+    pub const STOP: Self = Self::new(PriorityRange::new(PriorityRange::MIN));
+    pub const IDLE: Self = Self::new(PriorityRange::new(PriorityRange::MAX));
+    pub const MAX_RT: Self = Self::new(PriorityRange::new(99));
+
     pub const fn new(range: PriorityRange) -> Self {
         Self(range)
     }
@@ -92,8 +96,8 @@ impl Priority {
 }
 
 impl From<Nice> for Priority {
-    fn from(value: Nice) -> Self {
-        Self::new(PriorityRange::new(value.range().get() as u8 + 120))
+    fn from(nice: Nice) -> Self {
+        Self::new(PriorityRange::new(nice.range().get() as i16 + 120))
     }
 }
 
@@ -109,16 +113,16 @@ impl Default for Priority {
     }
 }
 
-impl From<Priority> for u8 {
+impl From<Priority> for i16 {
     fn from(value: Priority) -> Self {
         value.0.into()
     }
 }
 
-impl TryFrom<u8> for Priority {
-    type Error = <PriorityRange as TryFrom<u8>>::Error;
+impl TryFrom<i16> for Priority {
+    type Error = <PriorityRange as TryFrom<i16>>::Error;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: i16) -> Result<Self, Self::Error> {
         let range = value.try_into()?;
         Ok(Self::new(range))
     }
@@ -168,6 +172,8 @@ macro_rules! define_ranged_integer {
     };
 }
 
+pub(super) use define_ranged_integer;
+
 define_ranged_integer!(pub, RangedI8, i8);
 
-define_ranged_integer!(pub, RangedU8, u8);
+define_ranged_integer!(pub, RangedI16, i16);
