@@ -3,6 +3,8 @@
 //! Bus operations
 
 pub mod mmio;
+// FIXME: The current implementation of PCI is highly x86-specific.
+#[cfg(target_arch = "x86_64")]
 pub mod pci;
 
 /// An error that occurs during bus probing.
