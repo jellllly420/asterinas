@@ -28,15 +28,17 @@
 //! different considerations in different systems.
 
 use crate::{
-    arch::x86::kernel::{
-        acpi::get_acpi_tables,
-        apic::{
-            self, ApicId, DeliveryMode, DeliveryStatus, DestinationMode, DestinationShorthand, Icr,
-            Level, TriggerMode,
+    arch::x86::{
+        if_tdx_enabled,
+        kernel::{
+            acpi::get_acpi_tables,
+            apic::{
+                self, ApicId, DeliveryMode, DeliveryStatus, DestinationMode, DestinationShorthand,
+                Icr, Level, TriggerMode,
+            },
         },
     },
     boot::memory_region::{MemoryRegion, MemoryRegionType},
-    if_tdx_enabled,
     mm::{paddr_to_vaddr, PAGE_SIZE},
 };
 
