@@ -196,6 +196,11 @@ pub struct ucontext_t {
     pub uc_mcontext: mcontext_t,
 }
 
+// FIXME: Currently Rust generates array impls for every size up to 32 manually
+// and there is ongoing work on refactoring with const generics. We can just
+// derive the `Default` implementation once that is done.
+//
+// See https://github.com/rust-lang/rust/issues/61415.
 #[cfg(any(target_arch = "riscv64", target_arch = "loongarch64"))]
 impl Default for ucontext_t {
     fn default() -> Self {
@@ -234,6 +239,14 @@ impl mcontext_t {
     pub fn fpu_context_addr(&self) -> Vaddr;
     #[cfg(target_arch = "x86_64")]
     pub fn set_fpu_context_addr(&mut self, addr: Vaddr);
+}
+
+#[cfg(target_arch = "riscv64")]
+impl mcontext_t {
+    // Reference: <https://elixir.bootlin.com/linux/v6.17.5/source/arch/riscv/include/uapi/asm/ptrace.h#L94-L98>,
+    //            <https://elixir.bootlin.com/linux/v6.17.5/source/arch/riscv/include/uapi/asm/ptrace.h#L69-L77>.
+    pub(super) const FP_STATE_SIZE: usize =
+        size_of::<ostd::arch::cpu::context::QFpuContext>() + 3 * size_of::<u32>();
 }
 
 #[derive(Clone, Copy, Pod)]
