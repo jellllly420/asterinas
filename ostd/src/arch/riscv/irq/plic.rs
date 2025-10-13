@@ -20,7 +20,7 @@ pub(super) struct Plic {
     num_interrupt_sources: u32,
     num_targets: u32,
     /// Per-Plic interrupt-source-to-IRQ-number mappings.
-    interrupt_number_mappings: Box<[Option<u32>]>,
+    interrupt_number_mappings: Box<[Option<u8>]>,
 }
 
 impl Plic {
@@ -28,7 +28,7 @@ impl Plic {
         self.phandle
     }
 
-    pub(super) fn interrupt_number_mappings(&self) -> &[Option<u32>] {
+    pub(super) fn interrupt_number_mappings(&self) -> &[Option<u8>] {
         &self.interrupt_number_mappings
     }
 
@@ -292,7 +292,7 @@ impl Plic {
                     num_targets,
                     interrupt_number_mappings: (0..num_interrupt_sources)
                         .map(|_| None)
-                        .collect::<Vec<Option<u32>>>()
+                        .collect::<Vec<Option<u8>>>()
                         .into_boxed_slice(),
                 }
             })
@@ -307,8 +307,7 @@ impl Plic {
         assert!(interrupt_source > 0 && interrupt_source < self.num_interrupt_sources);
         match self.interrupt_number_mappings[interrupt_source as usize] {
             None => {
-                self.interrupt_number_mappings[interrupt_source as usize] =
-                    Some(irq_line.num() as u32);
+                self.interrupt_number_mappings[interrupt_source as usize] = Some(irq_line.num());
                 Ok(())
             }
             Some(_) => Err(Error::InvalidArgs),

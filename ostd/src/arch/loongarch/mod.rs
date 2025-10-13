@@ -56,10 +56,6 @@ pub(crate) unsafe fn init_on_ap() {
     unimplemented!()
 }
 
-pub(crate) fn interrupts_ack(irq_number: usize) {
-    kernel::irq::complete(irq_number as _);
-}
-
 /// Returns the frequency of TSC. The unit is Hz.
 pub fn tsc_freq() -> u64 {
     loongArch64::time::get_timer_freq() as _

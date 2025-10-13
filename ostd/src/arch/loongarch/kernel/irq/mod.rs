@@ -4,7 +4,10 @@ mod eiointc;
 
 use loongArch64::register::ecfg::LineBasedInterrupt;
 
-use crate::arch::{irq, kernel::irq::eiointc::Eiointc};
+use crate::{
+    arch::{irq, kernel::irq::eiointc::Eiointc},
+    irq::IrqHandle,
+};
 
 pub(in crate::arch) fn init() {
     // FIXME: Support SMP in LoongArch
@@ -24,10 +27,24 @@ pub(in crate::arch) fn init() {
     );
 }
 
-pub(in crate::arch) fn claim() -> Option<u8> {
-    Eiointc::claim()
+pub(in crate::arch) fn claim() -> Option<InterruptHandle> {
+    Eiointc::claim().map(|irq_num| InterruptHandle { irq_num })
 }
 
-pub(in crate::arch) fn complete(irq: u8) {
+fn complete(irq: u8) {
     Eiointc::complete(irq);
+}
+
+pub(in crate::arch) struct InterruptHandle {
+    irq_num: u8,
+}
+
+impl IrqHandle for InterruptHandle {
+    fn irq_num(&self) -> u8 {
+        self.irq_num
+    }
+
+    fn ack(&self) {
+        complete(self.irq_num);
+    }
 }

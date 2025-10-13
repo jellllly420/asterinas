@@ -18,7 +18,7 @@ use x86_64::registers::{
 };
 
 use crate::{
-    arch::trap::{RawUserContext, TrapFrame},
+    arch::trap::{InterruptHandle, RawUserContext, TrapFrame},
     cpu::PrivilegeLevel,
     irq::call_irq_callback_functions,
     mm::Vaddr,
@@ -207,7 +207,7 @@ impl CpuException {
         }
     }
 
-    pub(crate) const fn is_cpu_exception(trap_num: usize) -> bool {
+    pub(crate) const fn is_cpu_exception(trap_num: u8) -> bool {
         trap_num <= 31
     }
 }
@@ -304,7 +304,9 @@ impl UserContextApiInternal for UserContext {
                 None => {
                     call_irq_callback_functions(
                         &self.as_trap_frame(),
-                        self.as_trap_frame().trap_num,
+                        &InterruptHandle {
+                            irq_num: self.as_trap_frame().trap_num as u8,
+                        },
                         PrivilegeLevel::User,
                     );
                     crate::arch::irq::enable_local();

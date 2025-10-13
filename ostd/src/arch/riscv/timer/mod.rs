@@ -11,12 +11,24 @@ use spin::Once;
 
 use crate::{
     arch::{self, boot::DEVICE_TREE, cpu::extension::IsaExtensions, trap::TrapFrame},
-    irq::IrqLine,
+    irq::{IrqHandle, IrqLine},
     timer::TIMER_FREQ,
 };
 
 static TIMER_IRQ: Once<IrqLine> = Once::new();
-pub(super) static TIMER_IRQ_NUM: AtomicU8 = AtomicU8::new(0);
+pub(super) static TIMER_IRQ_HANDLE: TimerIrqHandle = TimerIrqHandle(AtomicU8::new(0));
+
+pub(super) struct TimerIrqHandle(AtomicU8);
+
+impl IrqHandle for TimerIrqHandle {
+    fn irq_num(&self) -> u8 {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    fn ack(&self) {
+        // No need to ack timer interrupt on RISC-V.
+    }
+}
 
 static TIMEBASE_FREQ: AtomicU64 = AtomicU64::new(0);
 static TIMER_INTERVAL: AtomicU64 = AtomicU64::new(0);
@@ -54,7 +66,7 @@ pub(super) unsafe fn init() {
 
     TIMER_IRQ.call_once(|| {
         let mut timer_irq = IrqLine::alloc().unwrap();
-        TIMER_IRQ_NUM.store(timer_irq.num(), Ordering::Relaxed);
+        TIMER_IRQ_HANDLE.0.store(timer_irq.num(), Ordering::Relaxed);
         timer_irq.on_active(timer_callback);
 
         timer_irq

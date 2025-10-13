@@ -85,14 +85,20 @@ use crate::{arch::trap::TrapFrame, cpu::PrivilegeLevel};
 
 pub(crate) fn call_irq_callback_functions(
     trap_frame: &TrapFrame,
-    irq_num: usize,
+    irq_handle: &dyn IrqHandle,
     cpu_priv_at_irq: PrivilegeLevel,
 ) {
     level::enter(
         move || {
-            top_half::process(trap_frame, irq_num);
-            bottom_half::process(irq_num);
+            top_half::process(trap_frame, irq_handle);
+            bottom_half::process(irq_handle.irq_num());
         },
         cpu_priv_at_irq,
     );
+}
+
+pub(crate) trait IrqHandle {
+    fn irq_num(&self) -> u8;
+
+    fn ack(&self);
 }

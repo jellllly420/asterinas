@@ -31,9 +31,10 @@ use crate::{
         cpu::context::{CpuException, PageFaultErrorCode, RawPageFaultInfo},
         if_tdx_enabled,
         irq::{disable_local, enable_local},
+        kernel::apic,
     },
     cpu::PrivilegeLevel,
-    irq::call_irq_callback_functions,
+    irq::{call_irq_callback_functions, IrqHandle},
     mm::{
         kspace::{KERNEL_PAGE_TABLE, LINEAR_MAPPING_BASE_VADDR, LINEAR_MAPPING_VADDR_RANGE},
         page_prop::{CachePolicy, PageProperty},
@@ -186,7 +187,31 @@ extern "sysv64" fn trap_handler(f: &mut TrapFrame) {
             );
         }
         None => {
-            call_irq_callback_functions(f, f.trap_num, PrivilegeLevel::Kernel);
+            call_irq_callback_functions(
+                f,
+                &InterruptHandle {
+                    irq_num: f.trap_num as u8,
+                },
+                PrivilegeLevel::Kernel,
+            );
+        }
+    }
+}
+
+pub(super) struct InterruptHandle {
+    pub(super) irq_num: u8,
+}
+
+impl IrqHandle for InterruptHandle {
+    fn irq_num(&self) -> u8 {
+        self.irq_num
+    }
+
+    fn ack(&self) {
+        if !CpuException::is_cpu_exception(self.irq_num) {
+            // TODO: We're in the interrupt context, so `disable_preempt()` is not
+            // really necessary here.
+            apic::get_or_init(&crate::task::disable_preempt() as _).eoi();
         }
     }
 }

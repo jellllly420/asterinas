@@ -2,15 +2,15 @@
 
 //! CPU execution context control.
 
-use core::{fmt::Debug, sync::atomic::Ordering};
+use core::fmt::Debug;
 
 use riscv::register::scause::{Exception, Interrupt, Trap};
 
 use crate::{
     arch::{
         irq::IRQ_CHIP,
+        timer::TIMER_IRQ_HANDLE,
         trap::{RawUserContext, TrapFrame},
-        TIMER_IRQ_NUM,
     },
     cpu::{CpuId, PrivilegeLevel},
     irq::call_irq_callback_functions,
@@ -150,16 +150,18 @@ impl UserContextApiInternal for UserContext {
                 Trap::Interrupt(Interrupt::SupervisorTimer) => {
                     call_irq_callback_functions(
                         &self.as_trap_frame(),
-                        TIMER_IRQ_NUM.load(Ordering::Relaxed) as usize,
+                        &TIMER_IRQ_HANDLE,
                         PrivilegeLevel::User,
                     );
                 }
                 Trap::Interrupt(Interrupt::SupervisorExternal) => {
                     let current_cpu = CpuId::current_racy().as_usize() as u32;
-                    while let Some(irq_num) = IRQ_CHIP.get().unwrap().claim_interrupt(current_cpu) {
+                    while let Some(interrupt_source_handle) =
+                        IRQ_CHIP.get().unwrap().claim_interrupt(current_cpu)
+                    {
                         call_irq_callback_functions(
                             &self.as_trap_frame(),
-                            irq_num as usize,
+                            &interrupt_source_handle,
                             PrivilegeLevel::User,
                         );
                     }

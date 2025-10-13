@@ -4,7 +4,7 @@
 
 mod plic;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::boxed::Box;
 use core::{
     fmt,
     ops::{Deref, DerefMut},
@@ -16,7 +16,7 @@ use crate::{
     arch::{boot::DEVICE_TREE, irq::plic::Plic},
     cpu::{CpuId, PinCurrentCpu},
     io::IoMemAllocatorBuilder,
-    irq::IrqLine,
+    irq::{IrqHandle, IrqLine},
     sync::SpinLock,
     Result,
 };
@@ -43,12 +43,6 @@ pub(super) unsafe fn init(io_mem_builder: &IoMemAllocatorBuilder) {
     plics.iter_mut().for_each(|plic| plic.init());
     IRQ_CHIP.call_once(|| IrqChip {
         plics: SpinLock::new(plics.into_boxed_slice()),
-        interrupt_number_mappings: SpinLock::new(
-            (IRQ_NUM_MIN..=IRQ_NUM_MAX)
-                .map(|_| None)
-                .collect::<Vec<Option<InterruptSourceHandle>>>()
-                .into_boxed_slice(),
-        ),
     });
     // SAFETY: Accessing the `sie` CSR to enable the external interrupt is
     // safe here because this function is only called during PLIC
@@ -105,8 +99,6 @@ pub(crate) fn is_local_enabled() -> bool {
 /// [`map_interrupt_source_to`]: Self::map_interrupt_source_to
 pub struct IrqChip {
     plics: SpinLock<Box<[Plic]>>,
-    /// Global IRQ-number-to-interrupt-source mappings.
-    interrupt_number_mappings: SpinLock<Box<[Option<InterruptSourceHandle>]>>,
 }
 
 impl IrqChip {
@@ -123,12 +115,6 @@ impl IrqChip {
             .find(|(_, plic)| plic.phandle() == interrupt_source.interrupt_parent)
             .unwrap();
 
-        self.interrupt_number_mappings.lock()[irq_line.num() as usize] =
-            Some(InterruptSourceHandle {
-                index,
-                interrupt: interrupt_source.interrupt,
-            });
-
         plic.map_interrupt_source_to(interrupt_source.interrupt, &irq_line)?;
         plic.set_priority(interrupt_source.interrupt, 1);
         // FIXME: Here we only enable external insterrupt on the BSP. We should
@@ -139,9 +125,15 @@ impl IrqChip {
             true,
         );
 
+        let interrupt_source_handle = InterruptSourceHandle {
+            index,
+            interrupt: interrupt_source.interrupt,
+            irq_num: irq_line.num(),
+        };
+
         Ok(MappedIrqLine {
             irq_line,
-            interrupt_source,
+            interrupt_source_handle,
         })
     }
 
@@ -149,39 +141,44 @@ impl IrqChip {
     ///
     /// It returns the software IRQ number if there's a pending interrupt on the
     /// hart, otherwise it will return `None`.
-    pub(super) fn claim_interrupt(&self, hart: u32) -> Option<u32> {
+    pub(super) fn claim_interrupt(&self, hart: u32) -> Option<InterruptSourceHandle> {
         self.plics
             .lock()
             .iter()
-            .find_map(|plic| plic.interrupt_number_mappings()[plic.claim_interrupt(hart) as usize])
+            .enumerate()
+            .find_map(|(index, plic)| {
+                let interrupt = plic.claim_interrupt(hart);
+                plic.interrupt_number_mappings()[interrupt as usize].map(|irq_num| {
+                    InterruptSourceHandle {
+                        index,
+                        interrupt,
+                        irq_num,
+                    }
+                })
+            })
     }
 
     /// Acknowledges the completion of an interrupt.
-    pub(super) fn complete_interrupt(&self, hart: u32, irq_num: u32) {
+    fn complete_interrupt(&self, hart: u32, interrupt_source_handle: InterruptSourceHandle) {
         let plics = self.plics.lock();
-        let interrupt_number_mappings = self.interrupt_number_mappings.lock();
-        let InterruptSourceHandle { index, interrupt } = interrupt_number_mappings
-            [irq_num as usize]
-            .as_ref()
-            .unwrap();
-        plics[*index].complete_interrupt(hart, *interrupt);
+        let InterruptSourceHandle {
+            index, interrupt, ..
+        } = interrupt_source_handle;
+        plics[index].complete_interrupt(hart, interrupt);
     }
 
     /// Unmaps an IRQ line from the IRQ chip.
-    fn unmap_irq_line(&self, irq_line: &IrqLine) {
+    fn unmap_irq_line(&self, mapped_irq_line: &MappedIrqLine) {
         let mut plics = self.plics.lock();
-        let mut interrupt_number_mappings = self.interrupt_number_mappings.lock();
 
-        let InterruptSourceHandle { index, interrupt } = interrupt_number_mappings
-            [irq_line.num() as usize]
-            .as_ref()
-            .unwrap();
-        let plic = &mut plics[*index];
+        let InterruptSourceHandle {
+            index, interrupt, ..
+        } = mapped_irq_line.interrupt_source_handle;
+        let plic = &mut plics[index];
 
-        plic.set_interrupt_enabled(CpuId::current_racy().as_usize() as u32, *interrupt, false);
-        plic.set_priority(*interrupt, 0);
-        plic.unmap_interrupt_source(*interrupt);
-        interrupt_number_mappings[irq_line.num() as usize] = None;
+        plic.set_interrupt_enabled(CpuId::current_racy().as_usize() as u32, interrupt, false);
+        plic.set_priority(interrupt, 0);
+        plic.unmap_interrupt_source(interrupt);
     }
 }
 
@@ -190,14 +187,14 @@ impl IrqChip {
 /// When the object is dropped, the IRQ line will be unmapped by the IRQ chip.
 pub struct MappedIrqLine {
     irq_line: IrqLine,
-    interrupt_source: InterruptSource,
+    interrupt_source_handle: InterruptSourceHandle,
 }
 
 impl fmt::Debug for MappedIrqLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MappedIrqLine")
             .field("irq_line", &self.irq_line)
-            .field("interrupt_source", &self.interrupt_source)
+            .field("interrupt_source_handle", &self.interrupt_source_handle)
             .finish_non_exhaustive()
     }
 }
@@ -218,24 +215,43 @@ impl DerefMut for MappedIrqLine {
 
 impl Drop for MappedIrqLine {
     fn drop(&mut self) {
-        IRQ_CHIP.get().unwrap().unmap_irq_line(&self.irq_line)
+        IRQ_CHIP.get().unwrap().unmap_irq_line(self)
     }
 }
 
-/// Interrupt source identifier.
+/// Hardware interrupt source identifier.
 ///
 /// An interrupt source can serve as a globally unique identifier of an IRQ.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct InterruptSource {
-    /// Interrupt source number on one interrupt controller.
-    pub interrupt: u32,
     /// Phandle of the interrupt controller it connects to.
     pub interrupt_parent: u32,
+    /// Interrupt source number on one interrupt controller.
+    pub interrupt: u32,
 }
 
-struct InterruptSourceHandle {
+/// Software interrupt source handle.
+///
+/// This is used internally by the `IrqChip` to bridge between the `IrqLine`
+/// abstraction and hardware interrupt source.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct InterruptSourceHandle {
     index: usize,
     interrupt: u32,
+    irq_num: u8,
+}
+
+impl IrqHandle for InterruptSourceHandle {
+    fn irq_num(&self) -> u8 {
+        self.irq_num
+    }
+
+    fn ack(&self) {
+        IRQ_CHIP
+            .get()
+            .unwrap()
+            .complete_interrupt(CpuId::current_racy().as_usize() as u32, *self);
+    }
 }
 
 pub(crate) struct IrqRemapping {

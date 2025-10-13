@@ -5,16 +5,13 @@
 #[expect(clippy::module_inception)]
 mod trap;
 
-use core::sync::atomic::Ordering;
-
 use riscv::register::scause::Interrupt;
 use spin::Once;
 pub(super) use trap::RawUserContext;
 pub use trap::TrapFrame;
 
-use super::{cpu::context::CpuExceptionInfo, timer::TIMER_IRQ_NUM};
 use crate::{
-    arch::irq::IRQ_CHIP,
+    arch::{cpu::context::CpuExceptionInfo, irq::IRQ_CHIP, timer::TIMER_IRQ_HANDLE},
     cpu::{CpuId, PrivilegeLevel},
     irq::call_irq_callback_functions,
 };
@@ -34,16 +31,18 @@ extern "C" fn trap_handler(f: &mut TrapFrame) {
     match riscv::register::scause::read().cause() {
         Trap::Interrupt(interrupt) => match interrupt {
             Interrupt::SupervisorTimer => {
-                call_irq_callback_functions(
-                    f,
-                    TIMER_IRQ_NUM.load(Ordering::Relaxed) as usize,
-                    PrivilegeLevel::Kernel,
-                );
+                call_irq_callback_functions(f, &TIMER_IRQ_HANDLE, PrivilegeLevel::Kernel);
             }
             Interrupt::SupervisorExternal => {
                 let current_cpu = CpuId::current_racy().as_usize() as u32;
-                while let Some(irq_num) = IRQ_CHIP.get().unwrap().claim_interrupt(current_cpu) {
-                    call_irq_callback_functions(f, irq_num as usize, PrivilegeLevel::Kernel);
+                while let Some(interrupt_source_handle) =
+                    IRQ_CHIP.get().unwrap().claim_interrupt(current_cpu)
+                {
+                    call_irq_callback_functions(
+                        f,
+                        &interrupt_source_handle,
+                        PrivilegeLevel::Kernel,
+                    );
                 }
             }
             Interrupt::SupervisorSoft => todo!(),

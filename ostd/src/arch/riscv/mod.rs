@@ -17,13 +17,6 @@ pub(crate) mod task;
 mod timer;
 pub mod trap;
 
-use core::sync::atomic::Ordering;
-
-use crate::{
-    arch::{irq::IRQ_CHIP, timer::TIMER_IRQ_NUM},
-    cpu::CpuId,
-};
-
 #[cfg(feature = "cvm_guest")]
 pub(crate) fn init_cvm_guest() {
     // Unimplemented, no-op
@@ -66,19 +59,6 @@ pub(crate) unsafe fn late_init_on_bsp() {
 
 pub(crate) unsafe fn init_on_ap() {
     unimplemented!()
-}
-
-pub(crate) fn interrupts_ack(irq_number: usize) {
-    // TODO: We should check for software interrupts too here. Only those external
-    // interrupts would go through the IRQ chip.
-    if irq_number == TIMER_IRQ_NUM.load(Ordering::Relaxed) as usize {
-        return;
-    }
-
-    IRQ_CHIP
-        .get()
-        .unwrap()
-        .complete_interrupt(CpuId::current_racy().as_usize() as u32, irq_number as u32);
 }
 
 /// Return the frequency of TSC. The unit is Hz.

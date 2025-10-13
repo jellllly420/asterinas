@@ -218,9 +218,9 @@ impl UserContextApiInternal for UserContext {
                     | Interrupt::HWI6
                     | Interrupt::HWI7 => {
                         log::debug!("Handling hardware interrupt: {:?}", interrupt);
-                        while let Some(irq) = crate::arch::kernel::irq::claim() {
+                        while let Some(interrupt_handle) = crate::arch::kernel::irq::claim() {
                             // Call the IRQ callback functions for the claimed interrupt
-                            call_irq_callback_functions(&self.as_trap_frame(), irq as _, PrivilegeLevel::User);
+                            call_irq_callback_functions(&self.as_trap_frame(), &interrupt_handle, PrivilegeLevel::User);
                         }
                     }
                     Interrupt::PMI => todo!(),

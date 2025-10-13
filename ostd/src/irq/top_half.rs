@@ -12,6 +12,7 @@ use crate::{
         irq::{IrqRemapping, IRQ_NUM_MAX, IRQ_NUM_MIN},
         trap::TrapFrame,
     },
+    irq::IrqHandle,
     prelude::*,
     sync::{RwLock, SpinLock, WriteIrqDisabled},
     Error,
@@ -185,12 +186,12 @@ impl Drop for CallbackHandle {
     }
 }
 
-pub(super) fn process(trap_frame: &TrapFrame, irq_num: usize) {
-    let inner = &INNERS[irq_num - (IRQ_NUM_MIN as usize)];
+pub(super) fn process(trap_frame: &TrapFrame, irq_handle: &dyn IrqHandle) {
+    let inner = &INNERS[irq_handle.irq_num() as usize - (IRQ_NUM_MIN as usize)];
     for callback in &*inner.callbacks.read() {
         callback(trap_frame);
     }
-    crate::arch::interrupts_ack(irq_num);
+    irq_handle.ack();
 }
 
 #[cfg(ktest)]
