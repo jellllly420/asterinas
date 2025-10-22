@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use ostd::{arch::boot::DEVICE_TREE, io::IoMem, mm::VmIoOnce};
 use chrono::{DateTime, Datelike, Timelike};
+use ostd::{arch::boot::DEVICE_TREE, io::IoMem, mm::VmIoOnce};
 
-use crate::{SystemTime, rtc::Driver};
+use crate::{rtc::Driver, SystemTime};
 
 pub struct RtcGoldfish {
     io_mem: IoMem,
@@ -11,20 +11,20 @@ pub struct RtcGoldfish {
 
 impl Driver for RtcGoldfish {
     fn try_new() -> Option<RtcGoldfish> {
-        let chosen = DEVICE_TREE.get().unwrap().find_node("/soc/rtc").unwrap();
-        if let Some(compatible) = chosen.compatible()
-            && compatible.all().any(|c| c == "google,goldfish-rtc")
-        {
-            let region = chosen.reg().unwrap().next().unwrap();
-            let io_mem = IoMem::acquire(
-                region.starting_address as usize
-                    ..region.starting_address as usize + region.size.unwrap(),
-            )
-            .unwrap();
-            Some(RtcGoldfish { io_mem })
-        } else {
-            None
-        }
+        const GOLDFISH_FDT_COMPATIBLE: &str = "google,goldfish-rtc";
+
+        let node = DEVICE_TREE
+            .get()
+            .unwrap()
+            .find_compatible(&[GOLDFISH_FDT_COMPATIBLE])?;
+        let region = node.reg().unwrap().next().unwrap();
+        let io_mem = IoMem::acquire(
+            region.starting_address as usize
+                ..region.starting_address as usize + region.size.unwrap(),
+        )
+        .unwrap();
+
+        Some(RtcGoldfish { io_mem })
     }
 
     fn read_rtc(&self) -> SystemTime {
