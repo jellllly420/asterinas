@@ -24,10 +24,10 @@ pub(crate) struct PagingConsts {}
 
 impl PagingConstsTrait for PagingConsts {
     const BASE_PAGE_SIZE: usize = 4096;
-    const NR_LEVELS: PagingLevel = 4;
-    const ADDRESS_WIDTH: usize = 48;
+    const NR_LEVELS: PagingLevel = 3;
+    const ADDRESS_WIDTH: usize = 39;
     const VA_SIGN_EXT: bool = true;
-    const HIGHEST_TRANSLATION_LEVEL: PagingLevel = 4;
+    const HIGHEST_TRANSLATION_LEVEL: PagingLevel = 2;
     const PTE_SIZE: usize = size_of::<PageTableEntry>();
 }
 
@@ -106,7 +106,7 @@ pub(crate) unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: Cach
     assert!(root_paddr % PagingConsts::BASE_PAGE_SIZE == 0);
     let ppn = root_paddr >> 12;
     unsafe {
-        riscv::register::satp::set(riscv::register::satp::Mode::Sv48, 0, ppn);
+        riscv::register::satp::set(riscv::register::satp::Mode::Sv39, 0, ppn);
     }
 }
 

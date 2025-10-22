@@ -126,13 +126,13 @@ pub(crate) const fn nr_base_per_page<C: PagingConstsTrait>(level: PagingLevel) -
 /// for some x86_64 CPUs' bugs. See
 /// <https://github.com/torvalds/linux/blob/480e035fc4c714fb5536e64ab9db04fedc89e910/arch/x86/include/asm/page_64.h#L68-L78>
 /// for the rationale.
-pub const MAX_USERSPACE_VADDR: Vaddr = 0x0000_8000_0000_0000 - PAGE_SIZE;
+pub const MAX_USERSPACE_VADDR: Vaddr = 0x0000_0040_0000_0000 - PAGE_SIZE;
 
 /// The kernel address space.
 ///
 /// There are the high canonical addresses defined in most 48-bit width
 /// architectures.
-pub const KERNEL_VADDR_RANGE: Range<Vaddr> = 0xffff_8000_0000_0000..0xffff_ffff_ffff_0000;
+pub const KERNEL_VADDR_RANGE: Range<Vaddr> = 0xffff_ffc0_0000_0000..0xffff_ffff_ffff_0000;
 
 /// Checks if the given address is page-aligned.
 pub const fn is_page_aligned(p: usize) -> bool {

@@ -108,18 +108,24 @@ unsafe fn init() {
     unsafe { mm::frame::allocator::init() };
 
     mm::kspace::init_kernel_page_table(meta_pages);
+    crate::early_println!("Kernel page table initialized");
 
     // SAFETY: This function is called only once on the BSP.
     unsafe { mm::kspace::activate_kernel_page_table() };
+    crate::early_println!("Kernel page table activated");
 
     sync::init();
+    crate::early_println!("Synchronization primitives initialized");
 
     boot::init_after_heap();
+    crate::early_println!("Boot modules initialized");
 
     mm::dma::init();
+    crate::early_println!("DMA subsystem initialized");
 
     // SAFETY: This function is called only once on the BSP.
     unsafe { arch::late_init_on_bsp() };
+    crate::early_println!("Architecture-specific initialization done");
 
     #[cfg(target_arch = "x86_64")]
     arch::if_tdx_enabled!({
@@ -127,14 +133,17 @@ unsafe fn init() {
     });
 
     smp::init();
+    crate::early_println!("SMP subsystem initialized");
 
     // SAFETY:
     // 1. The kernel page table is activated on the BSP.
     // 2. The function is called only once on the BSP.
     // 3. No remaining `with_borrow` invocations from now.
     unsafe { crate::mm::page_table::boot_pt::dismiss() };
+    crate::early_println!("Boot page table dismissed");
 
     arch::irq::enable_local();
+    crate::early_println!("Interrupts enabled");
 
     invoke_ffi_init_funcs();
 

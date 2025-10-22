@@ -61,19 +61,18 @@ use crate::{
     task::disable_preempt,
 };
 
-/// The shortest supported address width is 39 bits. And the literal
-/// values are written for 48 bits address width. Adjust the values
-/// by arithmetic left shift.
-const ADDR_WIDTH_SHIFT: isize = PagingConsts::ADDRESS_WIDTH as isize - 48;
+// The shortest supported address width is 39 bits. And the literal
+// values are written for 39 bits address width. Adjust the values
+// by arithmetic left shift.
+const ADDR_WIDTH_SHIFT: isize = PagingConsts::ADDRESS_WIDTH as isize - 39;
 
 /// Start of the kernel address space.
-/// This is the _lowest_ address of the x86-64's _high_ canonical addresses.
 #[cfg(not(target_arch = "loongarch64"))]
-pub const KERNEL_BASE_VADDR: Vaddr = 0xffff_8000_0000_0000 << ADDR_WIDTH_SHIFT;
+pub const KERNEL_BASE_VADDR: Vaddr = 0xffff_ffc0_0000_0000 << ADDR_WIDTH_SHIFT;
 #[cfg(target_arch = "loongarch64")]
-pub const KERNEL_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000 << ADDR_WIDTH_SHIFT;
+pub const KERNEL_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000;
 /// End of the kernel address space (non inclusive).
-pub const KERNEL_END_VADDR: Vaddr = 0xffff_ffff_ffff_0000 << ADDR_WIDTH_SHIFT;
+pub const KERNEL_END_VADDR: Vaddr = 0xffff_ffff_ffff_0000;
 
 /// The kernel code is linear mapped to this address.
 ///
@@ -85,26 +84,26 @@ pub fn kernel_loaded_offset() -> usize {
 }
 
 #[cfg(target_arch = "x86_64")]
-const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_8000_0000 << ADDR_WIDTH_SHIFT;
+const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_8000_0000;
 #[cfg(target_arch = "riscv64")]
-const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_0000_0000 << ADDR_WIDTH_SHIFT;
+const KERNEL_CODE_BASE_VADDR: usize = 0xffff_ffff_0000_0000;
 #[cfg(target_arch = "loongarch64")]
-const KERNEL_CODE_BASE_VADDR: usize = 0x9000_0000_0000_0000 << ADDR_WIDTH_SHIFT;
+const KERNEL_CODE_BASE_VADDR: usize = 0x9000_0000_0000_0000;
 
-const FRAME_METADATA_CAP_VADDR: Vaddr = 0xffff_e100_0000_0000 << ADDR_WIDTH_SHIFT;
-const FRAME_METADATA_BASE_VADDR: Vaddr = 0xffff_e000_0000_0000 << ADDR_WIDTH_SHIFT;
+const FRAME_METADATA_CAP_VADDR: Vaddr = 0xffff_fff0_8000_0000 << ADDR_WIDTH_SHIFT;
+const FRAME_METADATA_BASE_VADDR: Vaddr = 0xffff_fff0_0000_0000 << ADDR_WIDTH_SHIFT;
 pub(in crate::mm) const FRAME_METADATA_RANGE: Range<Vaddr> =
     FRAME_METADATA_BASE_VADDR..FRAME_METADATA_CAP_VADDR;
 
-const VMALLOC_BASE_VADDR: Vaddr = 0xffff_c000_0000_0000 << ADDR_WIDTH_SHIFT;
+const VMALLOC_BASE_VADDR: Vaddr = 0xffff_ffe0_0000_0000 << ADDR_WIDTH_SHIFT;
 pub const VMALLOC_VADDR_RANGE: Range<Vaddr> = VMALLOC_BASE_VADDR..FRAME_METADATA_BASE_VADDR;
 
 /// The base address of the linear mapping of all physical
 /// memory in the kernel address space.
 #[cfg(not(target_arch = "loongarch64"))]
-pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0xffff_8000_0000_0000 << ADDR_WIDTH_SHIFT;
+pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0xffff_ffc0_0000_0000 << ADDR_WIDTH_SHIFT;
 #[cfg(target_arch = "loongarch64")]
-pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000 << ADDR_WIDTH_SHIFT;
+pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000;
 pub const LINEAR_MAPPING_VADDR_RANGE: Range<Vaddr> = LINEAR_MAPPING_BASE_VADDR..VMALLOC_BASE_VADDR;
 
 /// Convert physical address to virtual address using offset, only available inside `ostd`
@@ -189,6 +188,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
     {
         let max_paddr = crate::mm::frame::max_paddr();
         let from = LINEAR_MAPPING_BASE_VADDR..LINEAR_MAPPING_BASE_VADDR + max_paddr;
+        crate::early_println!("Kernel linear mapping range: {:#x?}", from);
         let prop = PageProperty {
             flags: PageFlags::RW,
             cache: CachePolicy::Writeback,
@@ -201,11 +201,13 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
                 .expect("Kernel linear address space is mapped twice");
         }
     }
+    crate::early_println!("Kernel linear address space initialized");
 
     // Map the metadata pages.
     {
         let start_va = mapping::frame_to_meta::<PagingConsts>(0);
         let from = start_va..start_va + meta_pages.size();
+        crate::early_println!("Frame metadata mapping range: {:#x?}", from);
         let prop = PageProperty {
             flags: PageFlags::RW,
             cache: CachePolicy::Writeback,
@@ -216,6 +218,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         // We won't unmap them anyway, so there's no leaking problem yet.
         // TODO: support tracked huge page mapping.
         let pa_range = meta_pages.into_raw();
+        crate::early_println!("Frame metadata physical range: {:#x?}", pa_range);
         for (pa, level) in
             largest_pages::<KernelPtConfig>(from.start, pa_range.start, pa_range.len())
         {
@@ -224,6 +227,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
                 .expect("Frame metadata address space is mapped twice");
         }
     }
+    crate::early_println!("Frame metadata mapping initialized");
 
     // In LoongArch64, we don't need to do linear mappings for the kernel code because of DMW0.
     #[cfg(not(target_arch = "loongarch64"))]
@@ -237,11 +241,13 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
             .unwrap();
         let offset = kernel_loaded_offset();
         let from = region.base() + offset..region.end() + offset;
+        crate::early_println!("Kernel code mapping range: {:#x?}", from);
         let prop = PageProperty {
             flags: PageFlags::RWX,
             cache: CachePolicy::Writeback,
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
+        crate::early_println!("Kernel code physical range: {:#x?}", region);
         let mut cursor = kpt.cursor_mut(&preempt_guard, &from).unwrap();
         for (pa, level) in largest_pages::<KernelPtConfig>(from.start, region.base(), from.len()) {
             // SAFETY: we are doing the kernel code mapping.
@@ -249,6 +255,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
                 .expect("Kernel code mapped twice");
         }
     }
+    crate::early_println!("Kernel code mapping initialized");
 
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
