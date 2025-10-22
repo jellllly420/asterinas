@@ -47,11 +47,12 @@ fn get_random_seed() -> <StdRng as SeedableRng>::Seed {
     use ostd::arch::boot::DEVICE_TREE;
 
     let chosen = DEVICE_TREE.get().unwrap().find_node("/chosen").unwrap();
-    let seed = chosen
-        .property("rng-seed")
-        .unwrap()
-        .value
-        .try_into()
-        .unwrap();
+    let seed = match chosen.property("rng-seed") {
+        Some(prop) => prop.value.try_into().unwrap(),
+        // FIXME: Implement a better fallback method to get random seed on
+        // non-x86_64 platforms. This is just a temporary workaround for testing
+        // new platforms.
+        _ => [42; 32],
+    };
     seed
 }
