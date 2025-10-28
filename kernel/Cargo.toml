@@ -78,6 +78,7 @@ loongArch64 = "0.2.5"
 all = ["cvm_guest"]
 cvm_guest = ["dep:tdx-guest", "ostd/cvm_guest", "aster-virtio/cvm_guest"]
 coverage = ["ostd/coverage"]
+sv39 = ["ostd/sv39"]
 
 [lints]
 workspace = true
