@@ -307,7 +307,7 @@ impl Plic {
                                     .and_then(|_| node.property("reg").and_then(|p| p.as_usize()))
                             })?;
 
-                            Some((hart_id as u32, idx as u32))
+                            Some((hart_id as u32 - 1, idx as u32))
                         })
                         .collect()
                 };
